@@ -1,21 +1,7 @@
 from collections import defaultdict
-from fastembed import TextReRanker
+import numpy as np
 
-
-MODEL_NAME = "BAAI/bge-reranker-base"
-
-_reranker_model = None
-
-
-def get_reranker_model():
-    global _reranker_model
-    if _reranker_model is None:
-        try:
-            _reranker_model = TextReRanker(model_name=MODEL_NAME)
-        except Exception as e:
-            print(f"Warning: Failed to load reranker model: {e}")
-            _reranker_model = False
-    return _reranker_model if _reranker_model is not False else None
+from app.services.embeddings.embedder import get_embedding_model
 
 
 def rerank_results(
@@ -45,35 +31,32 @@ def rerank_results(
         return []
 
     # =====================================================
-    # 2. Rerank using FastEmbed TextReRanker (or fallback)
+    # 2. Score chunks using FastEmbed vector similarity
     # =====================================================
 
-    reranker = get_reranker_model()
-
-    if reranker is None:
-        # Fallback to returning original top_k results if reranker unavailable
-        return unique_results[:top_k]
-
     try:
+        model = get_embedding_model()
+        query_vec = list(model.embed([query]))[0]
         contents = [res.content for res in unique_results]
-        rerank_gen = reranker.rerank(query, contents)
+        content_vecs = list(model.embed(contents))
 
         scored_results = []
-        for item in rerank_gen:
-            idx = item["index"] if isinstance(item, dict) else getattr(item, "index", 0)
-            score = item["score"] if isinstance(item, dict) else getattr(item, "score", 0.0)
+        for result, vec in zip(unique_results, content_vecs):
+            norm_q = np.linalg.norm(query_vec)
+            norm_v = np.linalg.norm(vec)
+            score = float(np.dot(query_vec, vec) / ((norm_q * norm_v) + 1e-9))
             scored_results.append(
                 {
-                    "result": unique_results[idx],
-                    "score": float(score)
+                    "result": result,
+                    "score": score
                 }
             )
     except Exception as e:
-        print(f"Warning: Error during reranking execution: {e}")
+        print(f"Warning: Reranking error: {e}")
         return unique_results[:top_k]
 
     # =====================================================
-    # 4. Sort by relevance
+    # 3. Sort by relevance score
     # =====================================================
 
     scored_results.sort(
@@ -82,7 +65,7 @@ def rerank_results(
     )
 
     # =====================================================
-    # 5. Group results by document
+    # 4. Group results by document
     # =====================================================
 
     document_groups = defaultdict(list)
@@ -94,7 +77,7 @@ def rerank_results(
         document_groups[document_id].append(item)
 
     # =====================================================
-    # 6. Calculate document relevance
+    # 5. Calculate document relevance
     # =====================================================
 
     document_scores = []
@@ -122,7 +105,7 @@ def rerank_results(
         )
 
     # =====================================================
-    # 7. Rank documents
+    # 6. Rank documents
     # =====================================================
 
     document_scores.sort(
@@ -131,7 +114,7 @@ def rerank_results(
     )
 
     # =====================================================
-    # 8. Select chunks
+    # 7. Select chunks
     # =====================================================
 
     ranked_results = []

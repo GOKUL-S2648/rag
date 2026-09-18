@@ -1,13 +1,7 @@
 import re
 
-from groq import Groq
+from app.core.config import settings, get_groq_client
 
-from app.core.config import settings
-
-
-client = Groq(
-    api_key=settings.GROQ_API_KEY
-)
 
 
 FALLBACK_ANSWER = (
@@ -427,6 +421,7 @@ USER QUESTION
 ANSWER:
 """
 
+    client = get_groq_client()
     response = client.chat.completions.create(
         model="openai/gpt-oss-20b",
         messages=[

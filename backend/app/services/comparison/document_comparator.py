@@ -1,14 +1,8 @@
 import json
 import re
 
-from groq import Groq
+from app.core.config import settings, get_groq_client
 
-from app.core.config import settings
-
-
-client = Groq(
-    api_key=settings.GROQ_API_KEY
-)
 
 
 MODEL_NAME = "openai/gpt-oss-20b"
@@ -116,6 +110,7 @@ Name:
 COMPARISON:
 """
 
+    client = get_groq_client()
     response = client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
