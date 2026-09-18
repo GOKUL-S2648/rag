@@ -68,24 +68,6 @@ export default function Dashboard() {
     localStorage.getItem("access_token");
 
 
-  const userData =
-    localStorage.getItem("user");
-
-
-  let user: any = null;
-
-
-  try {
-
-    user = userData
-      ? JSON.parse(userData)
-      : null;
-
-  } catch {
-
-    user = null;
-
-  }
 
 
   // =====================================================
