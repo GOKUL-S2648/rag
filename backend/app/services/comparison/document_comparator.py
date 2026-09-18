@@ -4,8 +4,7 @@ import re
 from app.core.config import settings, get_groq_client
 
 
-
-MODEL_NAME = "openai/gpt-oss-20b"
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 
 def clean_json_response(text: str):
@@ -110,34 +109,37 @@ Name:
 COMPARISON:
 """
 
-    client = get_groq_client()
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a reliable enterprise document "
-                    "comparison system. Return valid JSON only."
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0,
-        max_completion_tokens=1800
-    )
+    try:
+        client = get_groq_client()
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a reliable enterprise document "
+                        "comparison system. Return valid JSON only."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0,
+            max_completion_tokens=1800
+        )
 
-    content = response.choices[0].message.content
+        content = response.choices[0].message.content
 
-    result = clean_json_response(
-        content
-    )
+        result = clean_json_response(
+            content
+        )
 
-    if result is not None:
-        return result
+        if result is not None:
+            return result
+    except Exception as e:
+        print(f"Error calling Groq for document comparison: {e}")
 
     return {
         "document_a": {
