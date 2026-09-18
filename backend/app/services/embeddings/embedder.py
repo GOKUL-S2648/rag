@@ -1,15 +1,19 @@
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
-model = SentenceTransformer(MODEL_NAME)
+_embedding_model = None
+
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = TextEmbedding(model_name=MODEL_NAME)
+    return _embedding_model
 
 
 def generate_embedding(text: str) -> list[float]:
-    embedding = model.encode(
-        text,
-        normalize_embeddings=True
-    )
-
-    return embedding.tolist()
+    model = get_embedding_model()
+    embeddings = list(model.embed([text]))
+    return embeddings[0].tolist()

@@ -1,11 +1,21 @@
 from collections import defaultdict
+from fastembed import TextReRanker
 
-from sentence_transformers import CrossEncoder
+
+MODEL_NAME = "BAAI/bge-reranker-base"
+
+_reranker_model = None
 
 
-MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-
-reranker_model = CrossEncoder(MODEL_NAME)
+def get_reranker_model():
+    global _reranker_model
+    if _reranker_model is None:
+        try:
+            _reranker_model = TextReRanker(model_name=MODEL_NAME)
+        except Exception as e:
+            print(f"Warning: Failed to load reranker model: {e}")
+            _reranker_model = False
+    return _reranker_model if _reranker_model is not False else None
 
 
 def rerank_results(
@@ -24,9 +34,7 @@ def rerank_results(
     seen_chunks = set()
 
     for result in results:
-
         chunk_id = str(result.id)
-
         if chunk_id in seen_chunks:
             continue
 
@@ -37,32 +45,32 @@ def rerank_results(
         return []
 
     # =====================================================
-    # 2. Create query-document pairs
+    # 2. Rerank using FastEmbed TextReRanker (or fallback)
     # =====================================================
 
-    pairs = [
-        [query, result.content]
-        for result in unique_results
-    ]
+    reranker = get_reranker_model()
 
-    # =====================================================
-    # 3. Cross-encoder scoring
-    # =====================================================
+    if reranker is None:
+        # Fallback to returning original top_k results if reranker unavailable
+        return unique_results[:top_k]
 
-    scores = reranker_model.predict(pairs)
+    try:
+        contents = [res.content for res in unique_results]
+        rerank_gen = reranker.rerank(query, contents)
 
-    scored_results = []
-
-    for result, score in zip(
-        unique_results,
-        scores
-    ):
-        scored_results.append(
-            {
-                "result": result,
-                "score": float(score)
-            }
-        )
+        scored_results = []
+        for item in rerank_gen:
+            idx = item["index"] if isinstance(item, dict) else getattr(item, "index", 0)
+            score = item["score"] if isinstance(item, dict) else getattr(item, "score", 0.0)
+            scored_results.append(
+                {
+                    "result": unique_results[idx],
+                    "score": float(score)
+                }
+            )
+    except Exception as e:
+        print(f"Warning: Error during reranking execution: {e}")
+        return unique_results[:top_k]
 
     # =====================================================
     # 4. Sort by relevance
@@ -80,25 +88,18 @@ def rerank_results(
     document_groups = defaultdict(list)
 
     for item in scored_results:
-
         document_id = str(
             item["result"].document_id
         )
-
         document_groups[document_id].append(item)
 
     # =====================================================
     # 6. Calculate document relevance
-    #
-    # Use the best two chunks from each document.
-    # This prevents one document with many weak chunks
-    # from dominating the results.
     # =====================================================
 
     document_scores = []
 
     for document_id, items in document_groups.items():
-
         items.sort(
             key=lambda item: item["score"],
             reverse=True
@@ -131,15 +132,11 @@ def rerank_results(
 
     # =====================================================
     # 8. Select chunks
-    #
-    # Give priority to the most relevant document.
-    # Still allow other highly relevant documents.
     # =====================================================
 
     ranked_results = []
 
     for document_id, _ in document_scores:
-
         items = document_groups[
             document_id
         ]
@@ -150,7 +147,6 @@ def rerank_results(
         )
 
         for item in items:
-
             ranked_results.append(
                 item["result"]
             )
